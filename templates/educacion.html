@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <h1 class="text-4xl font-bold text-center mb-8 text-purple-600"><i class="fas fa-graduation-cap mr-2"></i>Educación Financiera</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4 text-blue-600"><i class="fas fa-percentage mr-2"></i>¿Qué es el CAT?</h2>
+            <p class="text-gray-700 mb-4">
+                El <strong>Costo Anual Total (CAT)</strong> es el indicador más importante al elegir una tarjeta. 
+                Incluye intereses, comisiones y todos los costos asociados.
+            </p>
+            <div class="bg-blue-50 p-4 rounded">
+                <p class="font-bold text-blue-800">💡 Regla de oro:</p>
+                <p class="text-gray-700">Entre más bajo el CAT, mejor para ti. Un CAT de 30-40% es bueno para tarjetas de jóvenes.</p>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4 text-green-600"><i class="fas fa-chart-line mr-2"></i>Historial Crediticio</h2>
+            <p class="text-gray-700 mb-4">
+                Tu historial crediticio es tu reputación financiera. Construirlo correctamente te abrirá puertas.
+            </p>
+            <ul class="space-y-2">
+                <li class="flex items-start">
+                    <i class="fas fa-check text-green-600 mr-2 mt-1"></i>
+                    <span>Paga siempre a tiempo</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-check text-green-600 mr-2 mt-1"></i>
+                    <span>Usa menos del 30% de tu límite</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-check text-green-600 mr-2 mt-1"></i>
+                    <span>Mantén cuentas activas</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4 text-orange-600"><i class="fas fa-credit-card mr-2"></i>Tipos de Tarjetas</h2>
+            <div class="space-y-3">
+                <div class="border-l-4 border-blue-500 pl-4">
+                    <h3 class="font-bold">Estudiante</h3>
+                    <p class="text-sm text-gray-600">Sin anualidad, límites bajos, ideal para empezar</p>
+                </div>
+                <div class="border-l-4 border-green-500 pl-4">
+                    <h3 class="font-bold">Joven</h3>
+                    <p class="text-sm text-gray-600">18-28 años, beneficios en entretenimiento</p>
+                </div>
+                <div class="border-l-4 border-purple-500 pl-4">
+                    <h3 class="font-bold">Clásica</h3>
+                    <p class="text-sm text-gray-600">Más requisitos, mejores beneficios</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4 text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>Errores Comunes</h2>
+            <ul class="space-y-2">
+                <li class="flex items-start">
+                    <i class="fas fa-times text-red-600 mr-2 mt-1"></i>
+                    <span>Pagar solo el mínimo</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-times text-red-600 mr-2 mt-1"></i>
+                    <span>Maximar todas tus tarjetas</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-times text-red-600 mr-2 mt-1"></i>
+                    <span>No revisar tu estado de cuenta</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-times text-red-600 mr-2 mt-1"></i>
+                    <span>Solicitar muchas tarjetas a la vez</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="mt-8 bg-gradient-to-r from-purple-500 to-pink-500 text-white p-8 rounded-lg shadow-lg">
+        <h2 class="text-3xl font-bold mb-4 text-center">🎯 Consejo Final</h2>
+        <p class="text-center text-lg">
+            Una tarjeta de crédito es una herramienta poderosa. Úsala con responsabilidad y te ayudará a construir un futuro financiero sólido.
+        </p>
+    </div>
+</div>
+{% endblock %}

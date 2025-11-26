@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Panel de Administrador - PoliCard{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-4xl font-bold text-gray-800">
+                <i class="fas fa-user-shield text-blue-600 mr-3"></i>Panel de Administrador
+            </h1>
+            <p class="text-gray-600 mt-2">Bienvenido, {{ session.user_name }}</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="{{ url_for('admin_solicitudes') }}" class="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg transition shadow-lg">
+                <i class="fas fa-bell mr-2"></i>Solicitudes
+                {% if stats.solicitudes_pendientes > 0 %}
+                    <span class="bg-red-600 text-white rounded-full px-2 py-1 text-xs ml-2">{{ stats.solicitudes_pendientes }}</span>
+                {% endif %}
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Estadísticas -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+    <div class="bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-2xl shadow-xl p-6 transform hover:scale-105 transition">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-blue-100 text-sm font-medium">Total Bancos</p>
+                <p class="text-4xl font-bold mt-2">{{ stats.total_bancos }}</p>
+            </div>
+            <i class="fas fa-building text-5xl opacity-20"></i>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-yellow-500 to-yellow-700 text-white rounded-2xl shadow-xl p-6 transform hover:scale-105 transition">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-yellow-100 text-sm font-medium">Bancos Pendientes</p>
+                <p class="text-4xl font-bold mt-2">{{ stats.bancos_pendientes }}</p>
+            </div>
+            <i class="fas fa-clock text-5xl opacity-20"></i>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-green-500 to-green-700 text-white rounded-2xl shadow-xl p-6 transform hover:scale-105 transition">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-green-100 text-sm font-medium">Total Tarjetas</p>
+                <p class="text-4xl font-bold mt-2">{{ stats.total_tarjetas }}</p>
+            </div>
+            <i class="fas fa-credit-card text-5xl opacity-20"></i>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-purple-500 to-purple-700 text-white rounded-2xl shadow-xl p-6 transform hover:scale-105 transition">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-purple-100 text-sm font-medium">Tarjetas Pendientes</p>
+                <p class="text-4xl font-bold mt-2">{{ stats.tarjetas_pendientes }}</p>
+            </div>
+            <i class="fas fa-hourglass-half text-5xl opacity-20"></i>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-red-500 to-red-700 text-white rounded-2xl shadow-xl p-6 transform hover:scale-105 transition">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-red-100 text-sm font-medium">Solicitudes</p>
+                <p class="text-4xl font-bold mt-2">{{ stats.solicitudes_pendientes }}</p>
+            </div>
+            <i class="fas fa-tasks text-5xl opacity-20"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Acciones Rápidas -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <a href="{{ url_for('admin_solicitudes') }}" class="bg-white rounded-2xl shadow-lg p-8 hover:shadow-2xl transition transform hover:-translate-y-1 border-l-4 border-yellow-500">
+        <div class="flex items-center mb-4">
+            <div class="bg-yellow-100 p-4 rounded-full">
+                <i class="fas fa-bell text-3xl text-yellow-600"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 ml-4">Solicitudes</h3>
+        </div>
+        <p class="text-gray-600">Revisa y aprueba solicitudes de bancos y tarjetas</p>
+        <div class="mt-4 text-yellow-600 font-semibold">
+            Ver todas <i class="fas fa-arrow-right ml-2"></i>
+        </div>
+    </a>
+
+    <a href="{{ url_for('admin_bancos') }}" class="bg-white rounded-2xl shadow-lg p-8 hover:shadow-2xl transition transform hover:-translate-y-1 border-l-4 border-blue-500">
+        <div class="flex items-center mb-4">
+            <div class="bg-blue-100 p-4 rounded-full">
+                <i class="fas fa-building text-3xl text-blue-600"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 ml-4">Gestionar Bancos</h3>
+        </div>
+        <p class="text-gray-600">Administra todos los bancos registrados en la plataforma</p>
+        <div class="mt-4 text-blue-600 font-semibold">
+            Ver todos <i class="fas fa-arrow-right ml-2"></i>
+        </div>
+    </a>
+
+    <a href="{{ url_for('admin_tarjetas') }}" class="bg-white rounded-2xl shadow-lg p-8 hover:shadow-2xl transition transform hover:-translate-y-1 border-l-4 border-green-500">
+        <div class="flex items-center mb-4">
+            <div class="bg-green-100 p-4 rounded-full">
+                <i class="fas fa-credit-card text-3xl text-green-600"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-800 ml-4">Gestionar Tarjetas</h3>
+        </div>
+        <p class="text-gray-600">Administra todas las tarjetas de crédito publicadas</p>
+        <div class="mt-4 text-green-600 font-semibold">
+            Ver todas <i class="fas fa-arrow-right ml-2"></i>
+        </div>
+    </a>
+</div>
+{% endblock %}

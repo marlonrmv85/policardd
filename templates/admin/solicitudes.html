@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Solicitudes Pendientes - PoliCard{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <div class="flex items-center justify-between">
+        <h1 class="text-4xl font-bold text-gray-800">
+            <i class="fas fa-bell text-yellow-600 mr-3"></i>Solicitudes Pendientes
+        </h1>
+        <a href="{{ url_for('admin_dashboard') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition">
+            <i class="fas fa-arrow-left mr-2"></i>Volver al Dashboard
+        </a>
+    </div>
+</div>
+
+{% if solicitudes|length == 0 %}
+    <div class="bg-white rounded-2xl shadow-lg p-12 text-center">
+        <i class="fas fa-check-circle text-8xl text-green-500 mb-6"></i>
+        <h2 class="text-3xl font-bold text-gray-800 mb-4">¡Todo al día!</h2>
+        <p class="text-gray-600 text-lg">No hay solicitudes pendientes por revisar</p>
+    </div>
+{% else %}
+    <div class="space-y-6">
+        {% for solicitud in solicitudes %}
+        <div class="bg-white rounded-2xl shadow-lg p-6 border-l-4 {% if solicitud.tipo_solicitud == 'banco' %}border-blue-500{% else %}border-green-500{% endif %}">
+            <div class="flex items-start justify-between">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="px-4 py-2 rounded-full text-sm font-semibold {% if solicitud.tipo_solicitud == 'banco' %}bg-blue-100 text-blue-700{% else %}bg-green-100 text-green-700{% endif %}">
+                            <i class="fas fa-{% if solicitud.tipo_solicitud == 'banco' %}building{% else %}credit-card{% endif %} mr-2"></i>
+                            {{ solicitud.tipo_solicitud|upper }}
+                        </span>
+                        <span class="text-gray-500 text-sm">
+                            <i class="fas fa-calendar-alt mr-1"></i>
+                            {{ solicitud.fecha_solicitud.strftime('%d/%m/%Y %H:%M') }}
+                        </span>
+                    </div>
+
+                    {% if solicitud.tipo_solicitud == 'banco' %}
+                        <h3 class="text-2xl font-bold text-gray-800 mb-2">
+                            {{ solicitud.banco.nombre_banco }}
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <div>
+                                <p class="text-sm text-gray-600"><strong>Contacto:</strong> {{ solicitud.banco.usuario.nombre }}</p>
+                                <p class="text-sm text-gray-600"><strong>Email:</strong> {{ solicitud.banco.usuario.email }}</p>
+                                <p class="text-sm text-gray-600"><strong>Teléfono:</strong> {{ solicitud.banco.telefono }}</p>
+                            </div>
+                            <div>
+                                {% if solicitud.banco.sitio_web %}
+                                    <p class="text-sm text-gray-600"><strong>Sitio Web:</strong> 
+                                        <a href="{{ solicitud.banco.sitio_web }}" target="_blank" class="text-blue-600 hover:underline">
+                                            {{ solicitud.banco.sitio_web }}
+                                        </a>
+                                    </p>
+                                {% endif %}
+                                {% if solicitud.banco.descripcion %}
+                                    <p class="text-sm text-gray-600 mt-2"><strong>Descripción:</strong><br>{{ solicitud.banco.descripcion }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% else %}
+                        {% set tarjeta = solicitud.banco.tarjetas|selectattr('id', 'equalto', solicitud.referencia_id)|first %}
+                        {% if tarjeta %}
+                            <h3 class="text-2xl font-bold text-gray-800 mb-2">
+                                {{ tarjeta.nombre }}
+                            </h3>
+                            <p class="text-gray-600 mb-3">Banco: <strong>{{ solicitud.banco.nombre_banco }}</strong></p>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                                <div class="bg-gray-50 p-3 rounded-lg">
+                                    <p class="text-xs text-gray-600 mb-1">Tipo</p>
+                                    <p class="font-semibold text-gray-800">{{ tarjeta.tipo|capitalize }}</p>
+                                </div>
+                                <div class="bg-gray-50 p-3 rounded-lg">
+                                    <p class="text-xs text-gray-600 mb-1">CAT</p>
+                                    <p class="font-semibold text-gray-800">{{ tarjeta.cat }}%</p>
+                                </div>
+                                <div class="bg-gray-50 p-3 rounded-lg">
+                                    <p class="text-xs text-gray-600 mb-1">Anualidad</p>
+                                    <p class="font-semibold text-gray-800">${{ tarjeta.anualidad }}</p>
+                                </div>
+                                <div class="bg-gray-50 p-3 rounded-lg">
+                                    <p class="text-xs text-gray-600 mb-1">Edad Mínima</p>
+                                    <p class="font-semibold text-gray-800">{{ tarjeta.edad_minima }} años</p>
+                                </div>
+                            </div>
+                            {% if tarjeta.beneficios %}
+                                <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                                    <p class="text-sm font-semibold text-gray-700 mb-2">Beneficios:</p>
+                                    <p class="text-sm text-gray-600">{{ tarjeta.beneficios }}</p>
+                                </div>
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                </div>
+
+                <div class="flex flex-col gap-2 ml-6">
+                    <form method="POST" action="{{ url_for('aprobar_solicitud', id=solicitud.id) }}" onsubmit="return confirm('¿Aprobar esta solicitud?')">
+                        <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg transition shadow-lg font-semibold whitespace-nowrap">
+                            <i class="fas fa-check mr-2"></i>Aprobar
+                        </button>
+                    </form>
+                    
+                    <button onclick="rechazarSolicitud({{ solicitud.id }})" class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg transition shadow-lg font-semibold whitespace-nowrap">
+                        <i class="fas fa-times mr-2"></i>Rechazar
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<script>
+function rechazarSolicitud(id) {
+    Swal.fire({
+        title: '¿Rechazar solicitud?',
+        input: 'textarea',
+        inputLabel: 'Motivo del rechazo (opcional)',
+        inputPlaceholder: 'Escribe el motivo...',
+        showCancelButton: true,
+        confirmButtonText: 'Rechazar',
+        confirmButtonColor: '#ef4444',
+        cancelButtonText: 'Cancelar',
+        preConfirm: (comentario) => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/admin/solicitud/${id}/rechazar`;
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'comentario';
+            input.value = comentario || '';
+            form.appendChild(input);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+}
+</script>
+{% endblock %}

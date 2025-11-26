@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Mis Tarjetas - PoliCard{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <div class="flex items-center justify-between">
+        <h1 class="text-4xl font-bold text-gray-800">
+            <i class="fas fa-credit-card text-blue-600 mr-3"></i>Mis Tarjetas
+        </h1>
+        <div class="flex gap-3">
+            <a href="{{ url_for('banco_dashboard') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition">
+                <i class="fas fa-arrow-left mr-2"></i>Volver
+            </a>
+            {% if banco.aprobado %}
+                <a href="{{ url_for('banco_nueva_tarjeta') }}" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg transition shadow-lg">
+                    <i class="fas fa-plus mr-2"></i>Nueva Tarjeta
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if tarjetas|length == 0 %}
+    <div class="bg-white rounded-2xl shadow-lg p-12 text-center">
+        <i class="fas fa-credit-card text-8xl text-gray-300 mb-6"></i>
+        <h2 class="text-3xl font-bold text-gray-800 mb-4">No tienes tarjetas</h2>
+        <p class="text-gray-600 text-lg mb-6">Comienza creando tu primera tarjeta de crédito</p>
+        {% if banco.aprobado %}
+            <a href="{{ url_for('banco_nueva_tarjeta') }}" class="inline-block bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-lg transition shadow-lg font-semibold">
+                <i class="fas fa-plus mr-2"></i>Crear Primera Tarjeta
+            </a>
+        {% else %}
+            <p class="text-yellow-600 font-semibold">
+                <i class="fas fa-clock mr-2"></i>Disponible una vez aprobado tu banco
+            </p>
+        {% endif %}
+    </div>
+{% else %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for tarjeta in tarjetas %}
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition transform hover:-translate-y-1">
+            <!-- Header con Estado -->
+            <div class="{% if tarjeta.aprobada %}bg-gradient-to-r from-green-500 to-green-700{% else %}bg-gradient-to-r from-yellow-500 to-yellow-700{% endif %} text-white p-4">
+                <div class="flex items-center justify-between">
+                    <span class="font-semibold">
+                        <i class="fas fa-{% if tarjeta.aprobada %}check-circle{% else %}clock{% endif %} mr-2"></i>
+                        {% if tarjeta.aprobada %}Aprobada{% else %}Pendiente{% endif %}
+                    </span>
+                    <span class="bg-white bg-opacity-20 px-3 py-1 rounded-full text-sm">
+                        {{ tarjeta.tipo|capitalize }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Contenido -->
+            <div class="p-6">
+                <h3 class="text-2xl font-bold text-gray-800 mb-4">{{ tarjeta.nombre }}</h3>
+                
+                <div class="space-y-3 mb-6">
+                    <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                        <span class="text-gray-600"><i class="fas fa-percentage mr-2"></i>CAT:</span>
+                        <span class="font-bold text-gray-800">{{ tarjeta.cat }}%</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                        <span class="text-gray-600"><i class="fas fa-dollar-sign mr-2"></i>Anualidad:</span>
+                        <span class="font-bold text-gray-800">${{ tarjeta.anualidad }}</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg">
+                        <span class="text-gray-600"><i class="fas fa-user mr-2"></i>Edad Mínima:</span>
+                        <span class="font-bold text-gray-800">{{ tarjeta.edad_minima }} años</span>
+                    </div>
+                </div>
+
+                {% if tarjeta.beneficios %}
+                    <div class="mb-6 p-3 bg-blue-50 rounded-lg">
+                        <p class="text-sm text-gray-700"><strong class="text-blue-700">Beneficios:</strong></p>
+                        <p class="text-sm text-gray-600 mt-1">{{ tarjeta.beneficios[:100] }}{% if tarjeta.beneficios|length > 100 %}...{% endif %}</p>
+                    </div>
+                {% endif %}
+
+                <div class="flex gap-2">
+                    <a href="{{ url_for('banco_editar_tarjeta', id=tarjeta.id) }}" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg transition text-center">
+                        <i class="fas fa-edit mr-1"></i>Editar
+                    </a>
+                    <form method="POST" action="{{ url_for('banco_eliminar_tarjeta', id=tarjeta.id) }}" onsubmit="return confirm('¿Eliminar esta tarjeta?')" class="flex-1">
+                        <button type="submit" class="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg transition">
+                            <i class="fas fa-trash mr-1"></i>Eliminar
+                        </button>
+                    </form>
+                </div>
+
+                <div class="mt-3 text-xs text-gray-500 text-center">
+                    <i class="fas fa-calendar-alt mr-1"></i>
+                    Creada: {{ tarjeta.fecha_creacion.strftime('%d/%m/%Y') }}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% endif %}
+{% endblock %}

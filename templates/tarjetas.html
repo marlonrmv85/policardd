@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1 class="text-4xl font-bold text-center mb-8 text-blue-600"><i class="fas fa-credit-card mr-2"></i>Catálogo de Tarjetas</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for tarjeta in tarjetas %}
+    <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition">
+        <div class="bg-gradient-to-r from-blue-500 to-blue-700 text-white p-4">
+            <h3 class="text-xl font-bold">{{ tarjeta.nombre }}</h3>
+            <p class="text-blue-100">{{ tarjeta.banco }}</p>
+        </div>
+        <div class="p-6">
+            <span class="inline-block bg-blue-100 text-blue-800 text-xs px-3 py-1 rounded-full font-semibold mb-4">
+                {{ tarjeta.tipo|capitalize }}
+            </span>
+            
+            <div class="space-y-3 mb-4">
+                <div class="flex justify-between">
+                    <span class="text-gray-600"><i class="fas fa-percentage mr-2"></i>CAT:</span>
+                    <span class="font-bold text-lg">{{ tarjeta.cat }}%</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600"><i class="fas fa-dollar-sign mr-2"></i>Anualidad:</span>
+                    <span class="font-bold">{% if tarjeta.anualidad == 0 %}<span class="text-green-600">GRATIS</span>{% else %}${{ tarjeta.anualidad|int }}{% endif %}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-600"><i class="fas fa-user-clock mr-2"></i>Edad mínima:</span>
+                    <span class="font-bold">{{ tarjeta.edad_minima }} años</span>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 p-3 rounded">
+                <p class="text-sm text-gray-700"><i class="fas fa-gift text-purple-600 mr-2"></i><strong>Beneficios:</strong> {{ tarjeta.beneficios }}</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

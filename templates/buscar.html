@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-4xl font-bold text-center mb-8 text-blue-600"><i class="fas fa-search mr-2"></i>Encuentra tu Tarjeta Ideal</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-white p-8 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-6">Tus datos</h2>
+            <form method="POST" id="busqueda-form" novalidate>
+                {{ form.hidden_tag() }}
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 font-bold mb-2">
+                        <i class="fas fa-birthday-cake mr-2"></i>{{ form.edad.label }}
+                    </label>
+                    {{ form.edad(class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600", placeholder="Ej: 20") }}
+                    {% if form.edad.errors %}
+                        <p class="text-red-500 text-sm mt-2"><i class="fas fa-exclamation-circle"></i> {{ form.edad.errors[0] }}</p>
+                    {% endif %}
+                    <small class="text-gray-500 block mt-1">Debes tener al menos 18 años</small>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-gray-700 font-bold mb-2">
+                        <i class="fas fa-tags mr-2"></i>{{ form.tipo.label }}
+                    </label>
+                    {{ form.tipo(class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600") }}
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">
+                    <i class="fas fa-search mr-2"></i>Buscar Tarjetas
+                </button>
+            </form>
+        </div>
+
+        <div class="bg-blue-50 p-8 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-bold mb-4">💡 Consejos</h2>
+            <ul class="space-y-3">
+                <li class="flex items-start">
+                    <i class="fas fa-check-circle text-green-600 mr-2 mt-1"></i>
+                    <span><strong>Estudiante:</strong> Sin anualidad, ideal para universidad</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-check-circle text-green-600 mr-2 mt-1"></i>
+                    <span><strong>Joven:</strong> Para 18-28 años con beneficios especiales</span>
+                </li>
+                <li class="flex items-start">
+                    <i class="fas fa-check-circle text-green-600 mr-2 mt-1"></i>
+                    <span><strong>Clásica:</strong> Tarjetas tradicionales</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    {% if resultados %}
+    <div class="mt-12">
+        <div class="bg-green-100 border-l-4 border-green-500 p-4 mb-6 rounded">
+            <h2 class="text-2xl font-bold text-green-800"><i class="fas fa-check-circle mr-2"></i>¡Encontramos {{ resultados|length }} tarjeta(s)!</h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for tarjeta in resultados %}
+            <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition">
+                <div class="bg-gradient-to-r from-blue-500 to-blue-700 text-white p-4">
+                    <h3 class="text-xl font-bold">{{ tarjeta.nombre }}</h3>
+                    <p>{{ tarjeta.banco }}</p>
+                </div>
+                <div class="p-6">
+                    <div class="mb-4">
+                        <span class="bg-blue-100 text-blue-800 text-xs px-3 py-1 rounded-full font-semibold">{{ tarjeta.tipo|capitalize }}</span>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span><i class="fas fa-percentage mr-2"></i>CAT:</span>
+                            <span class="font-bold">{{ tarjeta.cat }}%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span><i class="fas fa-dollar-sign mr-2"></i>Anualidad:</span>
+                            <span class="font-bold">{% if tarjeta.anualidad == 0 %}<span class="text-green-600">GRATIS</span>{% else %}${{ tarjeta.anualidad|int }}{% endif %}</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded mt-4">
+                        <p class="text-sm"><i class="fas fa-gift text-purple-600 mr-2"></i>{{ tarjeta.beneficios }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.getElementById('busqueda-form').addEventListener('submit', function(e) {
+    const edad = parseInt(document.querySelector('input[name="edad"]').value);
+    if (!edad || edad < 18 || edad > 100) {
+        e.preventDefault();
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de validación',
+            text: 'La edad debe estar entre 18 y 100 años',
+            confirmButtonColor: '#2563eb'
+        });
+        return false;
+    }
+});
+</script>
+{% endblock %}
