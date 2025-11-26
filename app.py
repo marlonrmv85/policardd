@@ -15,22 +15,24 @@ logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# Configuración - usar variable de entorno en producción
+# VERIFICACIÓN DE BASE DE DATOS AL INICIO
+print("🔍 VERIFICANDO CONFIGURACIÓN DE BD...")
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///policard.db')
+print(f"📊 DATABASE_URL: {database_url}")
+
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+    print("✅ PostgreSQL URL corregida")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'policard2025secret')
-
-# Configuración de base de datos para PostgreSQL en Render
-def get_database_url():
-    database_url = os.environ.get('DATABASE_URL', 'sqlite:///policard.db')
-    if database_url and database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    return database_url
-
-app.config['SQLALCHEMY_DATABASE_URI'] = get_database_url()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_recycle': 300,
     'pool_pre_ping': True
 }
+
+print(f"🎯 URL FINAL: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
 db = SQLAlchemy(app)
 
@@ -662,30 +664,45 @@ def internal_error(error):
     app.logger.error(f"Error 500: {error}")
     return render_template('500.html'), 500
 
-# ==================== INICIALIZACIÓN ====================
+# ==================== INICIALIZACIÓN MEJORADA ====================
 def init_db():
     with app.app_context():
         try:
-            print("🔄 Verificando base de datos...")
-            db.create_all()
+            print("🔄 INICIANDO CREACIÓN DE TABLAS...")
+            print(f"📊 URL de BD: {app.config['SQLALCHEMY_DATABASE_URI']}")
             
-            if not Usuario.query.filter_by(email='admin@policard.com').first():
-                admin = Usuario(
-                    email='admin@policard.com',
-                    password=generate_password_hash('AdminPoliCard2025!'),
-                    nombre='Administrador PoliCard',
-                    tipo='admin'
-                )
-                db.session.add(admin)
-                db.session.commit()
-                print("✅ Admin creado en init_db")
+            # FORZAR eliminación y creación de tablas
+            db.drop_all()
+            print("✅ Tablas eliminadas")
+            
+            db.create_all()
+            print("✅ Tablas creadas")
+            
+            # Crear usuario admin
+            admin = Usuario(
+                email='admin@policard.com',
+                password=generate_password_hash('AdminPoliCard2025!'),
+                nombre='Administrador PoliCard',
+                tipo='admin'
+            )
+            db.session.add(admin)
+            db.session.commit()
+            print("✅ Usuario admin creado: admin@policard.com")
+            
+            # Verificar que se creó
+            admin_check = Usuario.query.filter_by(email='admin@policard.com').first()
+            if admin_check:
+                print("✅ VERIFICACIÓN: Admin existe en la BD")
             else:
-                print("✅ Base de datos ya inicializada")
+                print("❌ VERIFICACIÓN: Admin NO existe")
                 
         except Exception as e:
-            print(f"❌ Error en init_db: {e}")
+            print(f"❌ ERROR CRÍTICO en init_db: {str(e)}")
+            import traceback
+            print(f"📋 Traceback: {traceback.format_exc()}")
 
-# Inicializar base de datos
+# EJECUTAR INMEDIATAMENTE Y CON FORZA
+print("🚀 INICIANDO APLICACIÓN...")
 init_db()
 
 # ==================== EJECUCIÓN ====================
