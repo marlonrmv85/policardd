@@ -422,19 +422,34 @@ def dashboard():
 @admin_required
 def admin_dashboard():
     try:
+        print("🔍 DEBUG: Entrando a admin_dashboard")
+        
+        # Verificar conexión a BD
+        total_bancos = Banco.query.count()
+        print(f"✅ Total bancos: {total_bancos}")
+        
+        bancos_pendientes = Banco.query.filter_by(aprobado=False).count()
+        total_tarjetas = Tarjeta.query.count()
+        tarjetas_pendientes = Tarjeta.query.filter_by(aprobada=False).count()
+        solicitudes_pendientes = Solicitud.query.filter_by(estado='pendiente').count()
+        
         stats = {
-            'total_bancos': Banco.query.count(),
-            'bancos_pendientes': Banco.query.filter_by(aprobado=False).count(),
-            'total_tarjetas': Tarjeta.query.count(),
-            'tarjetas_pendientes': Tarjeta.query.filter_by(aprobada=False).count(),
-            'solicitudes_pendientes': Solicitud.query.filter_by(estado='pendiente').count()
+            'total_bancos': total_bancos,
+            'bancos_pendientes': bancos_pendientes,
+            'total_tarjetas': total_tarjetas,
+            'tarjetas_pendientes': tarjetas_pendientes,
+            'solicitudes_pendientes': solicitudes_pendientes
         }
+        
+        print(f"✅ Stats calculados: {stats}")
         return render_template('admin/dashboard.html', stats=stats)
+        
     except Exception as e:
-        flash('Error al cargar el dashboard', 'danger')
-        return redirect(url_for('index'))
-
-@app.route('/admin/solicitudes')
+        print(f"❌ ERROR en admin_dashboard: {str(e)}")
+        import traceback
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        flash(f'Error al cargar el dashboard: {str(e)}', 'danger')
+        return redirect(url_for('index'))@app.route('/admin/solicitudes')
 @admin_required
 def admin_solicitudes():
     try:
