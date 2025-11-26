@@ -644,6 +644,111 @@ def internal_error(error):
     db.session.rollback()
     return render_template('500.html'), 500
 
+# ==================== CREAR DATOS DE PRUEBA AL INICIAR ====================
+def create_sample_data_on_startup():
+    with app.app_context():
+        try:
+            # Verificar si ya existen datos
+            if Tarjeta.query.count() > 0:
+                print("✅ Ya existen datos en la base de datos")
+                return
+            
+            print("🔄 Creando datos de prueba...")
+            
+            # Crear banco de prueba
+            banco = Banco(
+                nombre_banco='BBVA México',
+                telefono='55 1234 5678',
+                sitio_web='https://www.bbva.mx',
+                descripcion='Uno de los bancos más importantes de México',
+                aprobado=True
+            )
+            
+            # Crear usuario para el banco
+            usuario_banco = Usuario(
+                email='bbva@ejemplo.com',
+                password=generate_password_hash('bbva123'),
+                nombre='Juan Pérez - BBVA',
+                tipo='banco'
+            )
+            
+            db.session.add(usuario_banco)
+            db.session.flush()
+            
+            banco.usuario_id = usuario_banco.id
+            db.session.add(banco)
+            db.session.flush()
+            
+            # Tarjetas de ejemplo
+            tarjetas = [
+                {
+                    'nombre': 'BBVA Azul Estudiante',
+                    'tipo': 'estudiante',
+                    'cat': 24.5,
+                    'anualidad': 0,
+                    'edad_minima': 18,
+                    'beneficios': 'Sin anualidad, cashback 3% en gastos escolares, seguro de compras',
+                    'aprobada': True
+                },
+                {
+                    'nombre': 'BBVA Oro Joven',
+                    'tipo': 'joven',
+                    'cat': 26.8,
+                    'anualidad': 450,
+                    'edad_minima': 21,
+                    'beneficios': 'Puntos BBVA, acceso a promociones exclusivas, seguro de viaje',
+                    'aprobada': True
+                },
+                {
+                    'nombre': 'BBVA Platino Clásica',
+                    'tipo': 'clasica',
+                    'cat': 29.2,
+                    'anualidad': 800,
+                    'edad_minima': 25,
+                    'beneficios': 'Salas VIP, asistencia médica, reembolso en gasolina',
+                    'aprobada': True
+                },
+                {
+                    'nombre': 'Santander Like U',
+                    'tipo': 'joven',
+                    'cat': 25.9,
+                    'anualidad': 0,
+                    'edad_minima': 18,
+                    'beneficios': 'Cashback en entretenimiento, descuentos en cines y restaurantes',
+                    'aprobada': True
+                },
+                {
+                    'nombre': 'Banamex Clásica',
+                    'tipo': 'clasica',
+                    'cat': 31.5,
+                    'anualidad': 550,
+                    'edad_minima': 23,
+                    'beneficios': 'Puntos Premia, seguro de protección de precios, promociones',
+                    'aprobada': True
+                }
+            ]
+            
+            for tarjeta_data in tarjetas:
+                tarjeta = Tarjeta(
+                    nombre=tarjeta_data['nombre'],
+                    banco_id=banco.id,
+                    tipo=tarjeta_data['tipo'],
+                    cat=tarjeta_data['cat'],
+                    anualidad=tarjeta_data['anualidad'],
+                    edad_minima=tarjeta_data['edad_minima'],
+                    beneficios=tarjeta_data['beneficios'],
+                    aprobada=tarjeta_data['aprobada']
+                )
+                db.session.add(tarjeta)
+            
+            db.session.commit()
+            print("✅ Datos de prueba creados exitosamente")
+            print("📊 Tarjetas creadas: 5")
+            print("🏦 Banco creado: BBVA México")
+            
+        except Exception as e:
+            print(f"❌ Error creando datos: {e}")
+
 # ==================== INICIALIZACIÓN ====================
 def init_db():
     with app.app_context():
@@ -662,9 +767,9 @@ def init_db():
         except Exception as e:
             print(f"❌ Error inicializando BD: {e}")
 
+# Inicializar base de datos y crear datos
 init_db()
-
-# ==================== EJECUCIÓN ====================
+create_sample_data_on_startup()# ==================== EJECUCIÓN ====================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
