@@ -6,11 +6,20 @@ from wtforms.validators import DataRequired, NumberRange, Email, Length, EqualTo
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime
+import os
+import re
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'policard2025secret'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///policard.db'
+
+# Configuración - usar variable de entorno en producción
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'policard2025secret')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///policard.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Fix para PostgreSQL en Render
+if app.config['SQLALCHEMY_DATABASE_URI'] and app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace("postgres://", "postgresql://", 1)
+
 db = SQLAlchemy(app)
 
 # ==================== MODELOS ====================
@@ -53,6 +62,11 @@ class Tarjeta(db.Model):
     aprobada = db.Column(db.Boolean, default=False)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     fecha_aprobacion = db.Column(db.DateTime)
+    
+    @property
+    def banco_nombre(self):
+        """Propiedad para compatibilidad con templates antiguos"""
+        return self.banco_rel.nombre_banco if self.banco_rel else 'N/A'
 
 class Solicitud(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -83,7 +97,12 @@ class RegistroBancoForm(FlaskForm):
 
 class TarjetaForm(FlaskForm):
     nombre = StringField('Nombre de la Tarjeta', validators=[DataRequired()])
-    tipo = SelectField('Tipo', choices=[('estudiante', 'Estudiante'), ('joven', 'Joven'), ('clasica', 'Clásica')], validators=[DataRequired()])
+    tipo = SelectField('Tipo', choices=[
+        ('', 'Selecciona un tipo'),
+        ('estudiante', 'Estudiante'), 
+        ('joven', 'Joven'), 
+        ('clasica', 'Clásica')
+    ], validators=[DataRequired()])
     cat = FloatField('CAT (%)', validators=[DataRequired(), NumberRange(min=0)])
     anualidad = FloatField('Anualidad ($)', validators=[DataRequired(), NumberRange(min=0)])
     edad_minima = IntegerField('Edad Mínima', validators=[DataRequired(), NumberRange(min=18, max=100)])
@@ -92,7 +111,19 @@ class TarjetaForm(FlaskForm):
 
 class BusquedaForm(FlaskForm):
     edad = IntegerField('Edad', validators=[DataRequired(), NumberRange(min=18, max=100)])
-    tipo = SelectField('Tipo', choices=[('estudiante', 'Estudiante'), ('joven', 'Joven'), ('clasica', 'Clásica')])
+    tipo = SelectField('Tipo', choices=[
+        ('', 'Selecciona un tipo'),
+        ('estudiante', 'Estudiante'), 
+        ('joven', 'Joven'), 
+        ('clasica', 'Clásica')
+    ], validators=[DataRequired()])
+
+# ==================== UTILIDADES ====================
+def sanitizar_input(texto):
+    """Sanitiza input para prevenir XSS básico"""
+    if texto:
+        return re.sub(r'<script.*?>.*?</script>', '', texto, flags=re.IGNORECASE)
+    return texto
 
 # ==================== DECORADORES ====================
 def login_required(f):
@@ -127,6 +158,10 @@ def banco_required(f):
         if not usuario or usuario.tipo != 'banco':
             flash('No tienes permisos de banco', 'danger')
             return redirect(url_for('index'))
+        # Verificar que el banco existe
+        if not usuario.banco:
+            flash('No se encontró información del banco', 'danger')
+            return redirect(url_for('logout'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -137,25 +172,35 @@ def index():
 
 @app.route('/tarjetas')
 def tarjetas():
-    todas_tarjetas = Tarjeta.query.filter_by(aprobada=True).all()
-    return render_template('tarjetas.html', tarjetas=todas_tarjetas)
+    try:
+        todas_tarjetas = Tarjeta.query.filter_by(aprobada=True).all()
+        return render_template('tarjetas.html', tarjetas=todas_tarjetas)
+    except Exception as e:
+        flash('Error al cargar las tarjetas', 'danger')
+        return render_template('tarjetas.html', tarjetas=[])
 
 @app.route('/buscar', methods=['GET', 'POST'])
 def buscar():
     form = BusquedaForm()
     resultados = []
+    
     if form.validate_on_submit():
-        edad = form.edad.data
-        tipo = form.tipo.data
-        resultados = Tarjeta.query.filter(
-            Tarjeta.edad_minima <= edad, 
-            Tarjeta.tipo == tipo,
-            Tarjeta.aprobada == True
-        ).all()
-        if resultados:
-            flash(f'¡Encontramos {len(resultados)} tarjeta(s) para ti!', 'success')
-        else:
-            flash('No encontramos tarjetas. Intenta con otros filtros.', 'warning')
+        try:
+            edad = form.edad.data
+            tipo = form.tipo.data
+            resultados = Tarjeta.query.filter(
+                Tarjeta.edad_minima <= edad, 
+                Tarjeta.tipo == tipo,
+                Tarjeta.aprobada == True
+            ).all()
+            
+            if resultados:
+                flash(f'¡Encontramos {len(resultados)} tarjeta(s) para ti!', 'success')
+            else:
+                flash('No encontramos tarjetas que coincidan con tus criterios. Intenta con otros filtros.', 'warning')
+        except Exception as e:
+            flash('Error al realizar la búsqueda', 'danger')
+    
     return render_template('buscar.html', form=form, resultados=resultados)
 
 @app.route('/educacion')
@@ -170,23 +215,28 @@ def calculadora():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'user_id' in session:
-        return redirect(url_for('dashboard'))
+        usuario = Usuario.query.get(session['user_id'])
+        if usuario:
+            return redirect(url_for('dashboard'))
     
     form = LoginForm()
     if form.validate_on_submit():
-        usuario = Usuario.query.filter_by(email=form.email.data).first()
-        if usuario and check_password_hash(usuario.password, form.password.data):
-            if not usuario.activo:
-                flash('Tu cuenta está desactivada. Contacta al administrador.', 'danger')
-                return redirect(url_for('login'))
-            
-            session['user_id'] = usuario.id
-            session['user_type'] = usuario.tipo
-            session['user_name'] = usuario.nombre
-            flash(f'¡Bienvenido {usuario.nombre}!', 'success')
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Email o contraseña incorrectos', 'danger')
+        try:
+            usuario = Usuario.query.filter_by(email=form.email.data).first()
+            if usuario and check_password_hash(usuario.password, form.password.data):
+                if not usuario.activo:
+                    flash('Tu cuenta está desactivada. Contacta al administrador.', 'danger')
+                    return redirect(url_for('login'))
+                
+                session['user_id'] = usuario.id
+                session['user_type'] = usuario.tipo
+                session['user_name'] = usuario.nombre
+                flash(f'¡Bienvenido {usuario.nombre}!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Email o contraseña incorrectos', 'danger')
+        except Exception as e:
+            flash('Error al iniciar sesión', 'danger')
     
     return render_template('login.html', form=form)
 
@@ -194,42 +244,48 @@ def login():
 def registro_banco():
     form = RegistroBancoForm()
     if form.validate_on_submit():
-        # Verificar si el email ya existe
-        if Usuario.query.filter_by(email=form.email.data).first():
-            flash('Este email ya está registrado', 'danger')
-            return redirect(url_for('registro_banco'))
+        try:
+            # Verificar si el email ya existe
+            if Usuario.query.filter_by(email=form.email.data).first():
+                flash('Este email ya está registrado', 'danger')
+                return redirect(url_for('registro_banco'))
+            
+            # Crear usuario
+            usuario = Usuario(
+                email=sanitizar_input(form.email.data),
+                password=generate_password_hash(form.password.data),
+                nombre=sanitizar_input(form.nombre_contacto.data),
+                tipo='banco'
+            )
+            db.session.add(usuario)
+            db.session.flush()
+            
+            # Crear banco
+            banco = Banco(
+                usuario_id=usuario.id,
+                nombre_banco=sanitizar_input(form.nombre_banco.data),
+                telefono=sanitizar_input(form.telefono.data),
+                sitio_web=sanitizar_input(form.sitio_web.data),
+                descripcion=sanitizar_input(form.descripcion.data)
+            )
+            db.session.add(banco)
+            db.session.flush()
+            
+            # Crear solicitud de aprobación
+            solicitud = Solicitud(
+                banco_id=banco.id,
+                tipo_solicitud='banco',
+                referencia_id=banco.id
+            )
+            db.session.add(solicitud)
+            
+            db.session.commit()
+            flash('Registro exitoso. Tu solicitud está pendiente de aprobación.', 'success')
+            return redirect(url_for('login'))
         
-        # Crear usuario
-        usuario = Usuario(
-            email=form.email.data,
-            password=generate_password_hash(form.password.data),
-            nombre=form.nombre_contacto.data,
-            tipo='banco'
-        )
-        db.session.add(usuario)
-        db.session.flush()
-        
-        # Crear banco
-        banco = Banco(
-            usuario_id=usuario.id,
-            nombre_banco=form.nombre_banco.data,
-            telefono=form.telefono.data,
-            sitio_web=form.sitio_web.data,
-            descripcion=form.descripcion.data
-        )
-        db.session.add(banco)
-        
-        # Crear solicitud de aprobación
-        solicitud = Solicitud(
-            banco_id=banco.id,
-            tipo_solicitud='banco',
-            referencia_id=banco.id
-        )
-        db.session.add(solicitud)
-        
-        db.session.commit()
-        flash('Registro exitoso. Tu solicitud está pendiente de aprobación.', 'success')
-        return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            flash('Error en el registro. Intenta nuevamente.', 'danger')
     
     return render_template('registro_banco.html', form=form)
 
@@ -243,196 +299,264 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    usuario = Usuario.query.get(session['user_id'])
-    if usuario.tipo == 'admin':
-        return redirect(url_for('admin_dashboard'))
-    else:
-        return redirect(url_for('banco_dashboard'))
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        if not usuario:
+            session.clear()
+            flash('Usuario no encontrado', 'danger')
+            return redirect(url_for('login'))
+            
+        if usuario.tipo == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return redirect(url_for('banco_dashboard'))
+    except Exception as e:
+        flash('Error al cargar el dashboard', 'danger')
+        return redirect(url_for('index'))
 
 # ==================== PANEL ADMIN ====================
 @app.route('/admin/dashboard')
 @admin_required
 def admin_dashboard():
-    total_bancos = Banco.query.count()
-    bancos_pendientes = Banco.query.filter_by(aprobado=False).count()
-    total_tarjetas = Tarjeta.query.count()
-    tarjetas_pendientes = Tarjeta.query.filter_by(aprobada=False).count()
-    solicitudes_pendientes = Solicitud.query.filter_by(estado='pendiente').count()
-    
-    stats = {
-        'total_bancos': total_bancos,
-        'bancos_pendientes': bancos_pendientes,
-        'total_tarjetas': total_tarjetas,
-        'tarjetas_pendientes': tarjetas_pendientes,
-        'solicitudes_pendientes': solicitudes_pendientes
-    }
-    
-    return render_template('admin/dashboard.html', stats=stats)
+    try:
+        total_bancos = Banco.query.count()
+        bancos_pendientes = Banco.query.filter_by(aprobado=False).count()
+        total_tarjetas = Tarjeta.query.count()
+        tarjetas_pendientes = Tarjeta.query.filter_by(aprobada=False).count()
+        solicitudes_pendientes = Solicitud.query.filter_by(estado='pendiente').count()
+        
+        stats = {
+            'total_bancos': total_bancos,
+            'bancos_pendientes': bancos_pendientes,
+            'total_tarjetas': total_tarjetas,
+            'tarjetas_pendientes': tarjetas_pendientes,
+            'solicitudes_pendientes': solicitudes_pendientes
+        }
+        
+        return render_template('admin/dashboard.html', stats=stats)
+    except Exception as e:
+        flash('Error al cargar el dashboard de administrador', 'danger')
+        return redirect(url_for('index'))
 
 @app.route('/admin/solicitudes')
 @admin_required
 def admin_solicitudes():
-    solicitudes = Solicitud.query.filter_by(estado='pendiente').order_by(Solicitud.fecha_solicitud.desc()).all()
-    return render_template('admin/solicitudes.html', solicitudes=solicitudes)
+    try:
+        solicitudes = Solicitud.query.filter_by(estado='pendiente').order_by(Solicitud.fecha_solicitud.desc()).all()
+        return render_template('admin/solicitudes.html', solicitudes=solicitudes)
+    except Exception as e:
+        flash('Error al cargar las solicitudes', 'danger')
+        return render_template('admin/solicitudes.html', solicitudes=[])
 
 @app.route('/admin/solicitud/<int:id>/aprobar', methods=['POST'])
 @admin_required
 def aprobar_solicitud(id):
-    solicitud = Solicitud.query.get_or_404(id)
-    solicitud.estado = 'aprobada'
-    solicitud.fecha_respuesta = datetime.utcnow()
+    try:
+        solicitud = Solicitud.query.get_or_404(id)
+        solicitud.estado = 'aprobada'
+        solicitud.fecha_respuesta = datetime.utcnow()
+        
+        if solicitud.tipo_solicitud == 'banco':
+            banco = Banco.query.get(solicitud.referencia_id)
+            if banco:
+                banco.aprobado = True
+                banco.fecha_aprobacion = datetime.utcnow()
+        elif solicitud.tipo_solicitud == 'tarjeta':
+            tarjeta = Tarjeta.query.get(solicitud.referencia_id)
+            if tarjeta:
+                tarjeta.aprobada = True
+                tarjeta.fecha_aprobacion = datetime.utcnow()
+        
+        db.session.commit()
+        flash('Solicitud aprobada exitosamente', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al aprobar la solicitud', 'danger')
     
-    if solicitud.tipo_solicitud == 'banco':
-        banco = Banco.query.get(solicitud.referencia_id)
-        banco.aprobado = True
-        banco.fecha_aprobacion = datetime.utcnow()
-    elif solicitud.tipo_solicitud == 'tarjeta':
-        tarjeta = Tarjeta.query.get(solicitud.referencia_id)
-        tarjeta.aprobada = True
-        tarjeta.fecha_aprobacion = datetime.utcnow()
-    
-    db.session.commit()
-    flash('Solicitud aprobada exitosamente', 'success')
     return redirect(url_for('admin_solicitudes'))
 
 @app.route('/admin/solicitud/<int:id>/rechazar', methods=['POST'])
 @admin_required
 def rechazar_solicitud(id):
-    solicitud = Solicitud.query.get_or_404(id)
-    solicitud.estado = 'rechazada'
-    solicitud.fecha_respuesta = datetime.utcnow()
-    solicitud.comentario_admin = request.form.get('comentario', '')
+    try:
+        solicitud = Solicitud.query.get_or_404(id)
+        solicitud.estado = 'rechazada'
+        solicitud.fecha_respuesta = datetime.utcnow()
+        solicitud.comentario_admin = sanitizar_input(request.form.get('comentario', ''))
+        
+        db.session.commit()
+        flash('Solicitud rechazada', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al rechazar la solicitud', 'danger')
     
-    db.session.commit()
-    flash('Solicitud rechazada', 'info')
     return redirect(url_for('admin_solicitudes'))
 
 @app.route('/admin/bancos')
 @admin_required
 def admin_bancos():
-    bancos = Banco.query.all()
-    return render_template('admin/bancos.html', bancos=bancos)
+    try:
+        bancos = Banco.query.all()
+        return render_template('admin/bancos.html', bancos=bancos)
+    except Exception as e:
+        flash('Error al cargar los bancos', 'danger')
+        return render_template('admin/bancos.html', bancos=[])
 
 @app.route('/admin/tarjetas')
 @admin_required
 def admin_tarjetas():
-    tarjetas = Tarjeta.query.all()
-    return render_template('admin/tarjetas.html', tarjetas=tarjetas)
+    try:
+        tarjetas = Tarjeta.query.join(Banco).all()
+        return render_template('admin/tarjetas.html', tarjetas=tarjetas)
+    except Exception as e:
+        flash('Error al cargar las tarjetas', 'danger')
+        return render_template('admin/tarjetas.html', tarjetas=[])
 
 # ==================== PANEL BANCO ====================
 @app.route('/banco/dashboard')
 @banco_required
 def banco_dashboard():
-    usuario = Usuario.query.get(session['user_id'])
-    banco = usuario.banco
-    
-    if not banco:
-        flash('No se encontró información del banco', 'danger')
-        return redirect(url_for('logout'))
-    
-    tarjetas_count = len(banco.tarjetas)
-    tarjetas_aprobadas = sum(1 for t in banco.tarjetas if t.aprobada)
-    solicitudes_pendientes = Solicitud.query.filter_by(banco_id=banco.id, estado='pendiente').count()
-    
-    stats = {
-        'tarjetas_count': tarjetas_count,
-        'tarjetas_aprobadas': tarjetas_aprobadas,
-        'solicitudes_pendientes': solicitudes_pendientes,
-        'banco_aprobado': banco.aprobado
-    }
-    
-    return render_template('banco/dashboard.html', banco=banco, stats=stats)
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        
+        tarjetas_count = len(banco.tarjetas)
+        tarjetas_aprobadas = sum(1 for t in banco.tarjetas if t.aprobada)
+        solicitudes_pendientes = Solicitud.query.filter_by(banco_id=banco.id, estado='pendiente').count()
+        
+        stats = {
+            'tarjetas_count': tarjetas_count,
+            'tarjetas_aprobadas': tarjetas_aprobadas,
+            'solicitudes_pendientes': solicitudes_pendientes,
+            'banco_aprobado': banco.aprobado
+        }
+        
+        return render_template('banco/dashboard.html', banco=banco, stats=stats)
+    except Exception as e:
+        flash('Error al cargar el dashboard del banco', 'danger')
+        return redirect(url_for('index'))
 
 @app.route('/banco/tarjetas')
 @banco_required
 def banco_tarjetas():
-    usuario = Usuario.query.get(session['user_id'])
-    banco = usuario.banco
-    tarjetas = banco.tarjetas
-    return render_template('banco/tarjetas.html', tarjetas=tarjetas, banco=banco)
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        tarjetas = banco.tarjetas
+        return render_template('banco/tarjetas.html', tarjetas=tarjetas, banco=banco)
+    except Exception as e:
+        flash('Error al cargar las tarjetas', 'danger')
+        return redirect(url_for('banco_dashboard'))
 
 @app.route('/banco/tarjeta/nueva', methods=['GET', 'POST'])
 @banco_required
 def banco_nueva_tarjeta():
-    usuario = Usuario.query.get(session['user_id'])
-    banco = usuario.banco
-    
-    if not banco.aprobado:
-        flash('Tu banco debe estar aprobado para crear tarjetas', 'warning')
-        return redirect(url_for('banco_dashboard'))
-    
-    form = TarjetaForm()
-    if form.validate_on_submit():
-        tarjeta = Tarjeta(
-            nombre=form.nombre.data,
-            banco_id=banco.id,
-            tipo=form.tipo.data,
-            cat=form.cat.data,
-            anualidad=form.anualidad.data,
-            edad_minima=form.edad_minima.data,
-            beneficios=form.beneficios.data,
-            imagen_url=form.imagen_url.data
-        )
-        db.session.add(tarjeta)
-        db.session.flush()
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
         
-        # Crear solicitud de aprobación
-        solicitud = Solicitud(
-            banco_id=banco.id,
-            tipo_solicitud='tarjeta',
-            referencia_id=tarjeta.id
-        )
-        db.session.add(solicitud)
-        db.session.commit()
+        if not banco.aprobado:
+            flash('Tu banco debe estar aprobado para crear tarjetas', 'warning')
+            return redirect(url_for('banco_dashboard'))
         
-        flash('Tarjeta creada. Pendiente de aprobación por el administrador.', 'success')
+        form = TarjetaForm()
+        if form.validate_on_submit():
+            tarjeta = Tarjeta(
+                nombre=sanitizar_input(form.nombre.data),
+                banco_id=banco.id,
+                tipo=form.tipo.data,
+                cat=form.cat.data,
+                anualidad=form.anualidad.data,
+                edad_minima=form.edad_minima.data,
+                beneficios=sanitizar_input(form.beneficios.data),
+                imagen_url=sanitizar_input(form.imagen_url.data)
+            )
+            db.session.add(tarjeta)
+            db.session.flush()
+            
+            # Crear solicitud de aprobación
+            solicitud = Solicitud(
+                banco_id=banco.id,
+                tipo_solicitud='tarjeta',
+                referencia_id=tarjeta.id
+            )
+            db.session.add(solicitud)
+            db.session.commit()
+            
+            flash('Tarjeta creada. Pendiente de aprobación por el administrador.', 'success')
+            return redirect(url_for('banco_tarjetas'))
+        
+        return render_template('banco/tarjeta_form.html', form=form, titulo='Nueva Tarjeta')
+    
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al crear la tarjeta', 'danger')
         return redirect(url_for('banco_tarjetas'))
-    
-    return render_template('banco/tarjeta_form.html', form=form, titulo='Nueva Tarjeta')
 
 @app.route('/banco/tarjeta/<int:id>/editar', methods=['GET', 'POST'])
 @banco_required
 def banco_editar_tarjeta(id):
-    usuario = Usuario.query.get(session['user_id'])
-    banco = usuario.banco
-    tarjeta = Tarjeta.query.filter_by(id=id, banco_id=banco.id).first_or_404()
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        tarjeta = Tarjeta.query.filter_by(id=id, banco_id=banco.id).first_or_404()
+        
+        form = TarjetaForm(obj=tarjeta)
+        if form.validate_on_submit():
+            tarjeta.nombre = sanitizar_input(form.nombre.data)
+            tarjeta.tipo = form.tipo.data
+            tarjeta.cat = form.cat.data
+            tarjeta.anualidad = form.anualidad.data
+            tarjeta.edad_minima = form.edad_minima.data
+            tarjeta.beneficios = sanitizar_input(form.beneficios.data)
+            tarjeta.imagen_url = sanitizar_input(form.imagen_url.data)
+            tarjeta.aprobada = False  # Requiere nueva aprobación
+            
+            # Crear nueva solicitud
+            solicitud = Solicitud(
+                banco_id=banco.id,
+                tipo_solicitud='tarjeta',
+                referencia_id=tarjeta.id
+            )
+            db.session.add(solicitud)
+            db.session.commit()
+            
+            flash('Tarjeta actualizada. Pendiente de aprobación.', 'success')
+            return redirect(url_for('banco_tarjetas'))
+        
+        return render_template('banco/tarjeta_form.html', form=form, titulo='Editar Tarjeta', tarjeta=tarjeta)
     
-    form = TarjetaForm(obj=tarjeta)
-    if form.validate_on_submit():
-        tarjeta.nombre = form.nombre.data
-        tarjeta.tipo = form.tipo.data
-        tarjeta.cat = form.cat.data
-        tarjeta.anualidad = form.anualidad.data
-        tarjeta.edad_minima = form.edad_minima.data
-        tarjeta.beneficios = form.beneficios.data
-        tarjeta.imagen_url = form.imagen_url.data
-        tarjeta.aprobada = False  # Requiere nueva aprobación
-        
-        # Crear nueva solicitud
-        solicitud = Solicitud(
-            banco_id=banco.id,
-            tipo_solicitud='tarjeta',
-            referencia_id=tarjeta.id
-        )
-        db.session.add(solicitud)
-        db.session.commit()
-        
-        flash('Tarjeta actualizada. Pendiente de aprobación.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al editar la tarjeta', 'danger')
         return redirect(url_for('banco_tarjetas'))
-    
-    return render_template('banco/tarjeta_form.html', form=form, titulo='Editar Tarjeta', tarjeta=tarjeta)
 
 @app.route('/banco/tarjeta/<int:id>/eliminar', methods=['POST'])
 @banco_required
 def banco_eliminar_tarjeta(id):
-    usuario = Usuario.query.get(session['user_id'])
-    banco = usuario.banco
-    tarjeta = Tarjeta.query.filter_by(id=id, banco_id=banco.id).first_or_404()
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        tarjeta = Tarjeta.query.filter_by(id=id, banco_id=banco.id).first_or_404()
+        
+        db.session.delete(tarjeta)
+        db.session.commit()
+        flash('Tarjeta eliminada exitosamente', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al eliminar la tarjeta', 'danger')
     
-    db.session.delete(tarjeta)
-    db.session.commit()
-    flash('Tarjeta eliminada exitosamente', 'success')
     return redirect(url_for('banco_tarjetas'))
+
+# ==================== MANEJO DE ERRORES ====================
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
 
 # ==================== INICIALIZACIÓN ====================
 def init_db():
@@ -441,16 +565,20 @@ def init_db():
         
         # Crear admin por defecto si no existe
         if not Usuario.query.filter_by(email='admin@policard.com').first():
+            # En producción, usar una contraseña segura desde variables de entorno
+            admin_password = os.environ.get('ADMIN_PASSWORD', 'AdminPoliCard2025!')
             admin = Usuario(
                 email='admin@policard.com',
-                password=generate_password_hash('admin123'),
+                password=generate_password_hash(admin_password),
                 nombre='Administrador PoliCard',
                 tipo='admin'
             )
             db.session.add(admin)
             db.session.commit()
-            print("✅ Usuario admin creado: admin@policard.com / admin123")
+            print("✅ Usuario admin creado: admin@policard.com")
 
+# ==================== EJECUCIÓN ====================
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
