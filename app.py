@@ -302,6 +302,126 @@ def reset_db_route():
         </div>
         '''
 
+# ==================== RUTA TEMPORAL PARA DATOS DE PRUEBA ====================
+@app.route('/create-sample-data')
+def create_sample_data():
+    """Ruta temporal para crear datos de prueba - ELIMINAR después"""
+    try:
+        with app.app_context():
+            # Crear banco de prueba si no existe
+            banco = Banco.query.filter_by(nombre_banco='Banco de Prueba').first()
+            if not banco:
+                # Crear usuario para el banco
+                usuario_banco = Usuario(
+                    email='banco@prueba.com',
+                    password=generate_password_hash('banco123'),
+                    nombre='Gerente Banco Prueba',
+                    tipo='banco'
+                )
+                db.session.add(usuario_banco)
+                db.session.flush()
+                
+                # Crear banco
+                banco = Banco(
+                    usuario_id=usuario_banco.id,
+                    nombre_banco='Banco de Prueba',
+                    telefono='555-1234',
+                    sitio_web='https://bancoprueba.com',
+                    descripcion='Banco de prueba para demostración',
+                    aprobado=True
+                )
+                db.session.add(banco)
+                db.session.flush()
+            
+            # Crear tarjetas de prueba
+            tarjetas_ejemplo = [
+                {
+                    'nombre': 'Tarjeta Estudiante Plus',
+                    'tipo': 'estudiante',
+                    'cat': 25.5,
+                    'anualidad': 0,
+                    'edad_minima': 18,
+                    'beneficios': 'Sin anualidad, cashback 2%, seguro de compras'
+                },
+                {
+                    'nombre': 'Tarjeta Joven Gold',
+                    'tipo': 'joven', 
+                    'cat': 28.0,
+                    'anualidad': 300,
+                    'edad_minima': 21,
+                    'beneficios': 'Puntos canjeables, acceso a salas VIP, seguro de viaje'
+                },
+                {
+                    'nombre': 'Tarjeta Clásica Basic',
+                    'tipo': 'clasica',
+                    'cat': 32.0,
+                    'anualidad': 150,
+                    'edad_minima': 25,
+                    'beneficios': 'Línea de crédito básica, app móvil, notificaciones'
+                }
+            ]
+            
+            tarjetas_creadas = 0
+            for tarjeta_data in tarjetas_ejemplo:
+                if not Tarjeta.query.filter_by(nombre=tarjeta_data['nombre']).first():
+                    tarjeta = Tarjeta(
+                        nombre=tarjeta_data['nombre'],
+                        banco_id=banco.id,
+                        tipo=tarjeta_data['tipo'],
+                        cat=tarjeta_data['cat'],
+                        anualidad=tarjeta_data['anualidad'],
+                        edad_minima=tarjeta_data['edad_minima'],
+                        beneficios=tarjeta_data['beneficios'],
+                        aprobada=True
+                    )
+                    db.session.add(tarjeta)
+                    tarjetas_creadas += 1
+            
+            db.session.commit()
+            
+            return f'''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Datos de Prueba Creados</title>
+                <script src="https://cdn.tailwindcss.com"></script>
+            </head>
+            <body class="bg-gray-100 p-8">
+                <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 text-center">
+                    <div class="text-green-500 text-6xl mb-4">✅</div>
+                    <h1 class="text-2xl font-bold text-gray-800 mb-4">Datos de Prueba Creados</h1>
+                    <p class="text-gray-600 mb-4">Se crearon {tarjetas_creadas} tarjetas de ejemplo.</p>
+                    <div class="space-y-3">
+                        <a href="/admin/tarjetas" class="block w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition">
+                            Ver Tarjetas
+                        </a>
+                        <a href="/tarjetas" class="block w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition">
+                            Ver Catálogo Público
+                        </a>
+                        <a href="/admin/dashboard" class="block w-full bg-gray-600 text-white py-3 rounded-lg hover:bg-gray-700 transition">
+                            Volver al Dashboard
+                        </a>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-6">
+                        <strong>Recuerda eliminar esta ruta (/create-sample-data) después de usar.</strong>
+                    </p>
+                </div>
+            </body>
+            </html>
+            '''
+            
+    except Exception as e:
+        return f'''
+        <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 text-center">
+            <div class="text-red-500 text-6xl mb-4">❌</div>
+            <h1 class="text-2xl font-bold text-gray-800 mb-4">Error creando datos</h1>
+            <p class="text-red-600 mb-4">Error: {str(e)}</p>
+            <a href="/" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">
+                Volver al Inicio
+            </a>
+        </div>
+        '''
+
 # ==================== AUTENTICACIÓN ====================
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -518,8 +638,11 @@ def admin_tarjetas():
 def banco_dashboard():
     try:
         usuario = Usuario.query.get(session['user_id'])
+        if not usuario or not usuario.banco:
+            flash('No se encontró información del banco', 'danger')
+            return redirect(url_for('logout'))
+            
         banco = usuario.banco
-        
         tarjetas_count = len(banco.tarjetas)
         tarjetas_aprobadas = sum(1 for t in banco.tarjetas if t.aprobada)
         solicitudes_pendientes = Solicitud.query.filter_by(banco_id=banco.id, estado='pendiente').count()
@@ -542,6 +665,10 @@ def banco_dashboard():
 def banco_tarjetas():
     try:
         usuario = Usuario.query.get(session['user_id'])
+        if not usuario or not usuario.banco:
+            flash('No se encontró información del banco', 'danger')
+            return redirect(url_for('banco_dashboard'))
+            
         banco = usuario.banco
         tarjetas = banco.tarjetas
         return render_template('banco/tarjetas.html', tarjetas=tarjetas, banco=banco)
@@ -690,22 +817,4 @@ def init_db():
             print("✅ Usuario admin creado: admin@policard.com")
             
             # Verificar que se creó
-            admin_check = Usuario.query.filter_by(email='admin@policard.com').first()
-            if admin_check:
-                print("✅ VERIFICACIÓN: Admin existe en la BD")
-            else:
-                print("❌ VERIFICACIÓN: Admin NO existe")
-                
-        except Exception as e:
-            print(f"❌ ERROR CRÍTICO en init_db: {str(e)}")
-            import traceback
-            print(f"📋 Traceback: {traceback.format_exc()}")
-
-# EJECUTAR INMEDIATAMENTE Y CON FORZA
-print("🚀 INICIANDO APLICACIÓN...")
-init_db()
-
-# ==================== EJECUCIÓN ====================
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+            admin_check = Usuario.query.filter_by(email='admin@policard.com').first
