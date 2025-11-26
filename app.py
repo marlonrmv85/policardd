@@ -422,34 +422,19 @@ def dashboard():
 @admin_required
 def admin_dashboard():
     try:
-        print("🔍 DEBUG: Entrando a admin_dashboard")
-        
-        # Verificar conexión a BD
-        total_bancos = Banco.query.count()
-        print(f"✅ Total bancos: {total_bancos}")
-        
-        bancos_pendientes = Banco.query.filter_by(aprobado=False).count()
-        total_tarjetas = Tarjeta.query.count()
-        tarjetas_pendientes = Tarjeta.query.filter_by(aprobada=False).count()
-        solicitudes_pendientes = Solicitud.query.filter_by(estado='pendiente').count()
-        
         stats = {
-            'total_bancos': total_bancos,
-            'bancos_pendientes': bancos_pendientes,
-            'total_tarjetas': total_tarjetas,
-            'tarjetas_pendientes': tarjetas_pendientes,
-            'solicitudes_pendientes': solicitudes_pendientes
+            'total_bancos': Banco.query.count(),
+            'bancos_pendientes': Banco.query.filter_by(aprobado=False).count(),
+            'total_tarjetas': Tarjeta.query.count(),
+            'tarjetas_pendientes': Tarjeta.query.filter_by(aprobada=False).count(),
+            'solicitudes_pendientes': Solicitud.query.filter_by(estado='pendiente').count()
         }
-        
-        print(f"✅ Stats calculados: {stats}")
         return render_template('admin/dashboard.html', stats=stats)
-        
     except Exception as e:
-        print(f"❌ ERROR en admin_dashboard: {str(e)}")
-        import traceback
-        print(f"📋 Traceback: {traceback.format_exc()}")
-        flash(f'Error al cargar el dashboard: {str(e)}', 'danger')
-        return redirect(url_for('index'))@app.route('/admin/solicitudes')
+        flash('Error al cargar el dashboard', 'danger')
+        return redirect(url_for('index'))
+
+@app.route('/admin/solicitudes')
 @admin_required
 def admin_solicitudes():
     try:
@@ -482,6 +467,33 @@ def aprobar_solicitud(id):
         flash('Error al aprobar', 'danger')
     
     return redirect(url_for('admin_solicitudes'))
+
+@app.route('/admin/solicitud/<int:id>/rechazar', methods=['POST'])
+@admin_required
+def rechazar_solicitud(id):
+    try:
+        solicitud = Solicitud.query.get_or_404(id)
+        solicitud.estado = 'rechazada'
+        solicitud.fecha_respuesta = datetime.utcnow()
+        solicitud.comentario_admin = request.form.get('comentario', '')
+        
+        db.session.commit()
+        flash('Solicitud rechazada', 'info')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al rechazar', 'danger')
+    
+    return redirect(url_for('admin_solicitudes'))
+
+@app.route('/admin/bancos')
+@admin_required
+def admin_bancos():
+    try:
+        bancos = Banco.query.all()
+        return render_template('admin/bancos.html', bancos=bancos)
+    except Exception as e:
+        flash('Error al cargar los bancos', 'danger')
+        return render_template('admin/bancos.html', bancos=[])
 
 @app.route('/admin/tarjetas')
 @admin_required
@@ -523,6 +535,114 @@ def banco_tarjetas():
     except Exception as e:
         flash('Error al cargar tarjetas', 'danger')
         return redirect(url_for('banco_dashboard'))
+
+@app.route('/banco/tarjeta/nueva', methods=['GET', 'POST'])
+@banco_required
+def banco_nueva_tarjeta():
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        
+        if not banco.aprobado:
+            flash('Tu banco debe estar aprobado para crear tarjetas', 'warning')
+            return redirect(url_for('banco_dashboard'))
+        
+        form = TarjetaForm()
+        if form.validate_on_submit():
+            tarjeta = Tarjeta(
+                nombre=form.nombre.data,
+                banco_id=banco.id,
+                tipo=form.tipo.data,
+                cat=form.cat.data,
+                anualidad=form.anualidad.data,
+                edad_minima=form.edad_minima.data,
+                beneficios=form.beneficios.data,
+                imagen_url=form.imagen_url.data
+            )
+            db.session.add(tarjeta)
+            db.session.flush()
+            
+            solicitud = Solicitud(
+                banco_id=banco.id,
+                tipo_solicitud='tarjeta',
+                referencia_id=tarjeta.id
+            )
+            db.session.add(solicitud)
+            db.session.commit()
+            
+            flash('Tarjeta creada. Pendiente de aprobación.', 'success')
+            return redirect(url_for('banco_tarjetas'))
+        
+        return render_template('banco/tarjeta_form.html', form=form, titulo='Nueva Tarjeta')
+    
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al crear la tarjeta', 'danger')
+        return redirect(url_for('banco_tarjetas'))
+
+@app.route('/banco/tarjeta/<int:id>/editar', methods=['GET', 'POST'])
+@banco_required
+def banco_editar_tarjeta(id):
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        tarjeta = Tarjeta.query.filter_by(id=id, banco_id=banco.id).first_or_404()
+        
+        form = TarjetaForm(obj=tarjeta)
+        if form.validate_on_submit():
+            tarjeta.nombre = form.nombre.data
+            tarjeta.tipo = form.tipo.data
+            tarjeta.cat = form.cat.data
+            tarjeta.anualidad = form.anualidad.data
+            tarjeta.edad_minima = form.edad_minima.data
+            tarjeta.beneficios = form.beneficios.data
+            tarjeta.imagen_url = form.imagen_url.data
+            tarjeta.aprobada = False
+            
+            solicitud = Solicitud(
+                banco_id=banco.id,
+                tipo_solicitud='tarjeta',
+                referencia_id=tarjeta.id
+            )
+            db.session.add(solicitud)
+            db.session.commit()
+            
+            flash('Tarjeta actualizada. Pendiente de aprobación.', 'success')
+            return redirect(url_for('banco_tarjetas'))
+        
+        return render_template('banco/tarjeta_form.html', form=form, titulo='Editar Tarjeta', tarjeta=tarjeta)
+    
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al editar la tarjeta', 'danger')
+        return redirect(url_for('banco_tarjetas'))
+
+@app.route('/banco/tarjeta/<int:id>/eliminar', methods=['POST'])
+@banco_required
+def banco_eliminar_tarjeta(id):
+    try:
+        usuario = Usuario.query.get(session['user_id'])
+        banco = usuario.banco
+        tarjeta = Tarjeta.query.filter_by(id=id, banco_id=banco.id).first_or_404()
+        
+        db.session.delete(tarjeta)
+        db.session.commit()
+        flash('Tarjeta eliminada exitosamente', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error al eliminar la tarjeta', 'danger')
+    
+    return redirect(url_for('banco_tarjetas'))
+
+# ==================== MANEJO DE ERRORES ====================
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    return render_template('500.html'), 500
 
 # ==================== INICIALIZACIÓN ====================
 def init_db():
