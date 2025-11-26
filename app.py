@@ -8,17 +8,29 @@ from functools import wraps
 from datetime import datetime
 import os
 import re
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
 # Configuración - usar variable de entorno en producción
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'policard2025secret')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///policard.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Fix para PostgreSQL en Render
-if app.config['SQLALCHEMY_DATABASE_URI'] and app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgres://"):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace("postgres://", "postgresql://", 1)
+# Configuración de base de datos para PostgreSQL en Render
+def get_database_url():
+    database_url = os.environ.get('DATABASE_URL', 'sqlite:///policard.db')
+    if database_url and database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    return database_url
+
+app.config['SQLALCHEMY_DATABASE_URI'] = get_database_url()
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_recycle': 300,
+    'pool_pre_ping': True
+}
 
 db = SQLAlchemy(app)
 
@@ -176,6 +188,7 @@ def tarjetas():
         todas_tarjetas = Tarjeta.query.filter_by(aprobada=True).all()
         return render_template('tarjetas.html', tarjetas=todas_tarjetas)
     except Exception as e:
+        app.logger.error(f"Error en tarjetas: {e}")
         flash('Error al cargar las tarjetas', 'danger')
         return render_template('tarjetas.html', tarjetas=[])
 
@@ -199,6 +212,7 @@ def buscar():
             else:
                 flash('No encontramos tarjetas que coincidan con tus criterios. Intenta con otros filtros.', 'warning')
         except Exception as e:
+            app.logger.error(f"Error en buscar: {e}")
             flash('Error al realizar la búsqueda', 'danger')
     
     return render_template('buscar.html', form=form, resultados=resultados)
@@ -210,6 +224,81 @@ def educacion():
 @app.route('/calculadora')
 def calculadora():
     return render_template('calculadora.html')
+
+# ==================== RUTA TEMPORAL PARA RESET ====================
+@app.route('/reset-db')
+def reset_db_route():
+    """Ruta temporal para resetear la base de datos - ELIMINAR después de usar"""
+    try:
+        # Usar app_context explícitamente
+        with app.app_context():
+            print("🔄 Iniciando reset de base de datos...")
+            
+            # Eliminar todas las tablas
+            db.drop_all()
+            print("✅ Tablas eliminadas")
+            
+            # Crear todas las tablas
+            db.create_all()
+            print("✅ Tablas creadas")
+            
+            # Crear usuario admin
+            admin = Usuario(
+                email='admin@policard.com',
+                password=generate_password_hash('AdminPoliCard2025!'),
+                nombre='Administrador PoliCard',
+                tipo='admin'
+            )
+            db.session.add(admin)
+            db.session.commit()
+            print("✅ Usuario admin creado")
+            
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Base de Datos Reseteada</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="bg-gray-100 p-8">
+            <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 text-center">
+                <div class="text-green-500 text-6xl mb-4">✅</div>
+                <h1 class="text-2xl font-bold text-gray-800 mb-4">Base de Datos Reseteada</h1>
+                <p class="text-gray-600 mb-6">La base de datos ha sido reinicializada correctamente.</p>
+                
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <p class="font-semibold">Credenciales de Admin:</p>
+                    <p>Email: <strong>admin@policard.com</strong></p>
+                    <p>Contraseña: <strong>AdminPoliCard2025!</strong></p>
+                </div>
+                
+                <div class="space-y-3">
+                    <a href="/" class="block w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition">
+                        Ir a la Página Principal
+                    </a>
+                    <a href="/login" class="block w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition">
+                        Iniciar Sesión como Admin
+                    </a>
+                </div>
+                
+                <p class="text-sm text-gray-500 mt-6">
+                    <strong>Recuerda eliminar esta ruta (/reset-db) después de usar.</strong>
+                </p>
+            </div>
+        </body>
+        </html>
+        '''
+    except Exception as e:
+        return f'''
+        <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6 text-center">
+            <div class="text-red-500 text-6xl mb-4">❌</div>
+            <h1 class="text-2xl font-bold text-gray-800 mb-4">Error al Resetear BD</h1>
+            <p class="text-red-600 mb-4">Error: {str(e)}</p>
+            <a href="/" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">
+                Volver al Inicio
+            </a>
+        </div>
+        '''
 
 # ==================== AUTENTICACIÓN ====================
 @app.route('/login', methods=['GET', 'POST'])
@@ -236,6 +325,7 @@ def login():
             else:
                 flash('Email o contraseña incorrectos', 'danger')
         except Exception as e:
+            app.logger.error(f"Error en login: {e}")
             flash('Error al iniciar sesión', 'danger')
     
     return render_template('login.html', form=form)
@@ -285,6 +375,7 @@ def registro_banco():
         
         except Exception as e:
             db.session.rollback()
+            app.logger.error(f"Error en registro_banco: {e}")
             flash('Error en el registro. Intenta nuevamente.', 'danger')
     
     return render_template('registro_banco.html', form=form)
@@ -311,6 +402,7 @@ def dashboard():
         else:
             return redirect(url_for('banco_dashboard'))
     except Exception as e:
+        app.logger.error(f"Error en dashboard: {e}")
         flash('Error al cargar el dashboard', 'danger')
         return redirect(url_for('index'))
 
@@ -335,6 +427,7 @@ def admin_dashboard():
         
         return render_template('admin/dashboard.html', stats=stats)
     except Exception as e:
+        app.logger.error(f"Error en admin_dashboard: {e}")
         flash('Error al cargar el dashboard de administrador', 'danger')
         return redirect(url_for('index'))
 
@@ -345,6 +438,7 @@ def admin_solicitudes():
         solicitudes = Solicitud.query.filter_by(estado='pendiente').order_by(Solicitud.fecha_solicitud.desc()).all()
         return render_template('admin/solicitudes.html', solicitudes=solicitudes)
     except Exception as e:
+        app.logger.error(f"Error en admin_solicitudes: {e}")
         flash('Error al cargar las solicitudes', 'danger')
         return render_template('admin/solicitudes.html', solicitudes=[])
 
@@ -371,6 +465,7 @@ def aprobar_solicitud(id):
         flash('Solicitud aprobada exitosamente', 'success')
     except Exception as e:
         db.session.rollback()
+        app.logger.error(f"Error en aprobar_solicitud: {e}")
         flash('Error al aprobar la solicitud', 'danger')
     
     return redirect(url_for('admin_solicitudes'))
@@ -388,6 +483,7 @@ def rechazar_solicitud(id):
         flash('Solicitud rechazada', 'info')
     except Exception as e:
         db.session.rollback()
+        app.logger.error(f"Error en rechazar_solicitud: {e}")
         flash('Error al rechazar la solicitud', 'danger')
     
     return redirect(url_for('admin_solicitudes'))
@@ -399,6 +495,7 @@ def admin_bancos():
         bancos = Banco.query.all()
         return render_template('admin/bancos.html', bancos=bancos)
     except Exception as e:
+        app.logger.error(f"Error en admin_bancos: {e}")
         flash('Error al cargar los bancos', 'danger')
         return render_template('admin/bancos.html', bancos=[])
 
@@ -409,6 +506,7 @@ def admin_tarjetas():
         tarjetas = Tarjeta.query.join(Banco).all()
         return render_template('admin/tarjetas.html', tarjetas=tarjetas)
     except Exception as e:
+        app.logger.error(f"Error en admin_tarjetas: {e}")
         flash('Error al cargar las tarjetas', 'danger')
         return render_template('admin/tarjetas.html', tarjetas=[])
 
@@ -433,6 +531,7 @@ def banco_dashboard():
         
         return render_template('banco/dashboard.html', banco=banco, stats=stats)
     except Exception as e:
+        app.logger.error(f"Error en banco_dashboard: {e}")
         flash('Error al cargar el dashboard del banco', 'danger')
         return redirect(url_for('index'))
 
@@ -445,6 +544,7 @@ def banco_tarjetas():
         tarjetas = banco.tarjetas
         return render_template('banco/tarjetas.html', tarjetas=tarjetas, banco=banco)
     except Exception as e:
+        app.logger.error(f"Error en banco_tarjetas: {e}")
         flash('Error al cargar las tarjetas', 'danger')
         return redirect(url_for('banco_dashboard'))
 
@@ -490,6 +590,7 @@ def banco_nueva_tarjeta():
     
     except Exception as e:
         db.session.rollback()
+        app.logger.error(f"Error en banco_nueva_tarjeta: {e}")
         flash('Error al crear la tarjeta', 'danger')
         return redirect(url_for('banco_tarjetas'))
 
@@ -528,6 +629,7 @@ def banco_editar_tarjeta(id):
     
     except Exception as e:
         db.session.rollback()
+        app.logger.error(f"Error en banco_editar_tarjeta: {e}")
         flash('Error al editar la tarjeta', 'danger')
         return redirect(url_for('banco_tarjetas'))
 
@@ -544,6 +646,7 @@ def banco_eliminar_tarjeta(id):
         flash('Tarjeta eliminada exitosamente', 'success')
     except Exception as e:
         db.session.rollback()
+        app.logger.error(f"Error en banco_eliminar_tarjeta: {e}")
         flash('Error al eliminar la tarjeta', 'danger')
     
     return redirect(url_for('banco_tarjetas'))
@@ -556,29 +659,36 @@ def not_found_error(error):
 @app.errorhandler(500)
 def internal_error(error):
     db.session.rollback()
+    app.logger.error(f"Error 500: {error}")
     return render_template('500.html'), 500
 
 # ==================== INICIALIZACIÓN ====================
 def init_db():
     with app.app_context():
-        db.create_all()
-        
-        # Crear admin por defecto si no existe
-        if not Usuario.query.filter_by(email='admin@policard.com').first():
-            # En producción, usar una contraseña segura desde variables de entorno
-            admin_password = os.environ.get('ADMIN_PASSWORD', 'AdminPoliCard2025!')
-            admin = Usuario(
-                email='admin@policard.com',
-                password=generate_password_hash(admin_password),
-                nombre='Administrador PoliCard',
-                tipo='admin'
-            )
-            db.session.add(admin)
-            db.session.commit()
-            print("✅ Usuario admin creado: admin@policard.com")
+        try:
+            print("🔄 Verificando base de datos...")
+            db.create_all()
+            
+            if not Usuario.query.filter_by(email='admin@policard.com').first():
+                admin = Usuario(
+                    email='admin@policard.com',
+                    password=generate_password_hash('AdminPoliCard2025!'),
+                    nombre='Administrador PoliCard',
+                    tipo='admin'
+                )
+                db.session.add(admin)
+                db.session.commit()
+                print("✅ Admin creado en init_db")
+            else:
+                print("✅ Base de datos ya inicializada")
+                
+        except Exception as e:
+            print(f"❌ Error en init_db: {e}")
+
+# Inicializar base de datos
+init_db()
 
 # ==================== EJECUCIÓN ====================
 if __name__ == '__main__':
-    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
